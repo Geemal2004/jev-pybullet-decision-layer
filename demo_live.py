@@ -14,7 +14,7 @@ from debug_panel import DebugPanel
 OUT = os.path.join(os.path.dirname(__file__), "demo_out")
 os.makedirs(OUT, exist_ok=True)
 
-PANEL_W = 360
+PANEL_W = 368  # 960+368=1328 divisible by 16: no ffmpeg rescale
 
 
 def draw_panel(base, rec, answers):
@@ -71,7 +71,7 @@ def main():
         tag += f"_n{noise}_o{occ}"
     if not breaker:
         tag += "_nobreaker"
-    gif = os.path.join(OUT, f"live_{tag}.gif")
+    mp4 = os.path.join(OUT, f"live_{tag}.mp4")
 
     def on_step(payload):
         panel.update(payload["rec"], payload["answers"])  # 3D text (visible in window)
@@ -87,9 +87,11 @@ def main():
     run_episode(seed=seed, scenario=scenario, verbose=True, backend="real",
                 gui=True, on_step=on_step, noise_std=noise, occ_prob=occ,
                 use_breaker=breaker)
-    frames[0].save(gif, save_all=True, append_images=frames[1:],
-                   duration=1500, loop=0)
-    print(f"saved {gif} frames={len(frames)}")
+    import imageio.v2 as imageio
+    import numpy as _np
+    seq = [_np.asarray(fr) for fr in frames for _ in (0, 1)]
+    imageio.mimsave(mp4, seq, fps=2, quality=8)
+    print(f"saved {mp4} frames={len(frames)}")
 
 
 if __name__ == "__main__":

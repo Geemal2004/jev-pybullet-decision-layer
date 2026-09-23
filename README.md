@@ -169,6 +169,24 @@ independence before trusting the combined number.**
 - Panel/frame agreement verified: both render paths consume the same post-execution
   `rec` (outcome present) plus a live camera frame — spot-checked that CORRECT verdicts
   match visible block positions per frame.
+
+## Live video set (real arm, MP4 — not schematics)
+
+`demo_out/demo_reel.mp4` (44s) stitches all four with caption cards — lead with it.
+Camera: dist 0.9, yaw 90, pitch −40 at table height (arm + trays fill the frame).
+Writer: `imageio` + bundled ffmpeg (`imageio-ffmpeg`, no system install needed);
+1328×640 throughout (multiple of 16, so the codec never rescales); `stitch_reel.py` builds the reel.
+
+| Clip | Content |
+|---|---|
+| `live_normal_seed1000.mp4` | A. Clean baseline, 5/5 live |
+| `live_slip_seed1001.mp4` | B. Danger 2.1 → regrasp recovery |
+| `live_out_of_reach_seed1006_n0.015_o0.15_nobreaker.mp4` | C1. 8 waits, max_steps stall |
+| `live_out_of_reach_seed1006_n0.015_o0.15.mp4` | C2. Force-push → honest abort |
+| `demo_reel.mp4` | All four with captions |
+
+Re-record: `python demo_live.py [seed] [scenario] [noise] [occ] [on|off]`,
+then `python stitch_reel.py`. Needs a display for `p.GUI`.
 - **`B_slip_regrasp.gif`** — the threshold mechanism up close: holding red UNSTABLE,
   danger **1.82** crossing the 1.5 line (orange bar past the marker) → gate regrasp
   @ 1.00 → CORRECT. *(Schematic render, not physics.)*
