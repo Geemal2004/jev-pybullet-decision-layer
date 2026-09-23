@@ -4,18 +4,18 @@ from sim_env import SCENARIOS
 import json, os, sys
 from logger import PATH
 
-def evaluate(n_per=10, noise_std=0.0, occ_prob=0.0):
+def evaluate(n_per=10, noise_std=0.0, occ_prob=0.0, backend="logic"):
     if os.path.exists(PATH):
         os.remove(PATH)
     total_eps = 0
     for i in range(n_per):
         for sc in SCENARIOS:
-            run_episode(seed=1000 + total_eps, scenario=sc, verbose=False, noise_std=noise_std, occ_prob=occ_prob)
+            run_episode(seed=1000 + total_eps, scenario=sc, verbose=False, noise_std=noise_std, occ_prob=occ_prob, backend=backend)
             total_eps += 1
     rows = [json.loads(l) for l in open(PATH)]
     real = [r for r in rows if not r.get("mock")]
     acc = sum(1 for r in rows if r["correct"]) / max(1, len(rows))
-    print(f"episodes={total_eps} ({n_per}/scenario) noise_std={noise_std} occ_prob={occ_prob} decisions={len(rows)} live_jev={len(real)} set_acc={acc:.2f}")
+    print(f"episodes={total_eps} ({n_per}/scenario) noise_std={noise_std} occ_prob={occ_prob} backend={backend} decisions={len(rows)} live_jev={len(real)} set_acc={acc:.2f}")
     print("--- calibration overall ---")
     for lo, hi in [(0.0, 0.7), (0.7, 0.85), (0.85, 1.01)]:
         b = [r for r in rows if r.get("conf") is not None and lo <= r["conf"] < hi]
@@ -71,4 +71,5 @@ if __name__ == "__main__":
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 10
     ns = float(sys.argv[2]) if len(sys.argv) > 2 else 0.0
     op = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0
-    evaluate(n, ns, op)
+    be = sys.argv[4] if len(sys.argv) > 4 else "logic"
+    evaluate(n, ns, op, be)

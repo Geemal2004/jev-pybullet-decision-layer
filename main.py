@@ -1,10 +1,10 @@
 """One episode: perceive -> Jev (1 call, all questions) -> supervise -> act."""
-from sim_env import SimEnv
+
 from perception import to_jev_state
 from config import QUESTIONS
 from decision import decide
 from supervisor import gate
-import policy, logger
+import logger
 from oracle import oracle_skill, oracle_set
 
 def _reachable(xyz):
@@ -34,22 +34,38 @@ def _push_target(gt):
             return b
     return None
 
-def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=0.0, occ_prob=0.0, use_breaker=True, on_step=None):
+def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=0.0, occ_prob=0.0, use_breaker=True, on_step=None, backend="logic"):
     import random
-    env = SimEnv()
+    if backend == "real":
+        from sim_real import SimEnv as Env
+        import policy_real as pol
+    else:
+        from sim_env import SimEnv as Env
+        import policy as pol
+    env = Env()
     gt = env.reset(seed, scenario=scenario)
     last_action, last_outcome, retries = None, None, 0
     stagnant = 0  # consecutive steps with zero physical progress (clean GT blocks+holding identical)
     prev_sig = None
+    immovable_pushes = 0  # force-pushes that moved nothing (block outside arm envelope)
+    prev_was_force_push = False
+    def _sig(g):
+        # quantized: real physics micro-jitters bodies ~1e-6/step, so exact float
+        # equality NEVER trips (STAGNANT=0 across a whole real battery). 1mm grid.
+        return (tuple(sorted((b, tuple(round(c, 3) for c in v["xyz"])) for b, v in g["blocks"].items())), g["holding"])
     STAGNANT_PUSH_AFTER = 2  # then force deterministic push of the out-of-reach block
     for step in range(max_steps):
         gt = env.get_ground_truth()
-        sig = (tuple(sorted((b, tuple(v["xyz"])) for b, v in gt["blocks"].items())), gt["holding"])
+        sig = _sig(gt)
         if prev_sig is not None and sig == prev_sig:
             stagnant += 1
+            if prev_was_force_push:
+                immovable_pushes += 1
         else:
             stagnant = 0
+            immovable_pushes = 0
         prev_sig = sig
+        prev_was_force_push = False
         # separate streams: jitter draws identical whether occ is on or off (attribution-safe)
         rng_j = random.Random(f"j-{seed}-{step}-{noise_std}")
         rng_o = random.Random(f"o-{seed}-{step}-{occ_prob}")
@@ -64,8 +80,15 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
         if use_breaker and stagnant >= STAGNANT_PUSH_AFTER:
             force_push = _push_target(gt)
             if force_push is not None:
-                action = "push"
-                gate_res = {"action": "push", "reason": f"stagnant_{stagnant}_force_push_{force_push}"}
+                if immovable_pushes >= 1:
+                    # one executed force-push provably moved nothing (quantized GT
+                    # identical next step): a second would too. Admit impossibility.
+                    action = "abort"
+                    gate_res = {"action": "abort", "reason": f"immovable_{force_push}_after_{immovable_pushes}_pushes"}
+                else:
+                    action = "push"
+                    gate_res = {"action": "push", "reason": f"stagnant_{stagnant}_force_push_{force_push}"}
+                    prev_was_force_push = True
         oset = oracle_set(gt, state.get("occluded", []))
         oracle = oracle_skill(gt, state.get("occluded", []))
         outcome = {"ok": True}
@@ -75,37 +98,37 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
         elif action == "pick":
             bid = _pick_target(gt)
             if bid is None:
-                outcome = policy.do_wait(env)
+                outcome = pol.do_wait(env)
                 last_action = "wait (no reachable target)"
             else:
-                outcome = policy.do_pick(env, bid)
+                outcome = pol.do_pick(env, bid)
                 last_action = f"pick {bid}"
         elif action == "place":
             if gt["holding"]:
                 tgt_bin = gt["blocks"][gt["holding"]]["target_bin"]
-                outcome = policy.do_place(env, tgt_bin)
+                outcome = pol.do_place(env, tgt_bin)
                 last_action = f"place {tgt_bin}"
             else:
-                outcome = policy.do_wait(env)
+                outcome = pol.do_wait(env)
                 last_action = "wait"
         elif action == "push":
             bid = _push_target(gt)
             if bid is None:
                 bid = _pick_target(gt)  # nothing unreachable; nudge nearest unplaced
                 if bid is None:
-                    outcome = policy.do_wait(env)
+                    outcome = pol.do_wait(env)
                     last_action = "wait (nothing to push)"
                 else:
-                    outcome = policy.do_push(env, bid)
+                    outcome = pol.do_push(env, bid)
                     last_action = f"push {bid}"
             else:
-                outcome = policy.do_push(env, bid)
+                outcome = pol.do_push(env, bid)
                 last_action = f"push {bid}"
         elif action == "regrasp":
-            outcome = policy.do_regrasp(env)
+            outcome = pol.do_regrasp(env)
             last_action = "regrasp"
         else:
-            outcome = policy.do_wait(env)
+            outcome = pol.do_wait(env)
             last_action = "wait"
         last_outcome = outcome
         retries = retries + 1 if not outcome.get("ok") else 0

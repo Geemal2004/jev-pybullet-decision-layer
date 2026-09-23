@@ -160,3 +160,29 @@ independence before trusting the combined number.**
 - Real vision noise on top of the now-grounded signals — attribution stays clean
   because the decision layer is bug-checked first.
 - Hardware: replace `policy.py` primitives; supervisor thresholds transfer as-is.
+
+## Real-physics backend (answered: decisions transfer, execution doesn't)
+
+`sim_real.py` + `policy_real.py` (KUKA iiwa, rigid bodies, `backend="real"`) keep the
+identical GT schema; decision/oracle/scoring untouched. Schematic disclaimer above
+still applies to `demo_out/` (recorded on the logic backend).
+
+| Arm (real, 60 eps, live) | set_acc | out_of_reach | Others |
+|---|---|---|---|
+| Clean | 0.80 | 0.29 | 1.00 |
+| Jitter | 0.81 | 0.35 | ≥0.99 |
+| Occlusion | 0.83 | 0.37 | 1.00 |
+| Combined | 0.84 | 0.47 | ≥0.96 |
+
+vs logic: 0.99 / 0.88 / 0.99 / 0.95. normal/slip/wrong_bin transfer at 1.00 —
+the decision layer survives the backend swap. The gap is execution, diagnosed:
+real shove displaces ~0.12 vs logic's scripted 0.15, and at 0.95 the block sits
+outside the clamp-limited EE envelope entirely (**measured dx=0.000** — the clamp,
+not the motors, blocks contact). Chaining pushes is valid (oracle re-derives
+`{push}` from current positions every step — verified, no oracle change needed),
+but two harness bugs hid it: exact-float stagnation never tripped on micro-jitter
+(`STAGNANT=0` all battery; fixed with 1mm quantization) and the wrist collision
+mask (added against release-ejection) also neutered push contact (restored
+per-skill). Episodes that prove immovable now abort honestly instead of stalling.
+Physics bugs fixed along the way: fire-and-forget motion, tool-down IK stall,
+world-coords grasp pivot, release catapult. `python eval.py 15 0.0 0.0 real`.
