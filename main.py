@@ -50,9 +50,9 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
     immovable_pushes = 0  # force-pushes that moved nothing (block outside arm envelope)
     prev_was_force_push = False
     def _sig(g):
-        # progress-relevant state ONLY: unplaced blocks + holding. Placed blocks
-        # keep micro-settling on trays (blue crept 3.5cm across stagnant steps and
-        # vetoed detection while red sat exactly static). 1mm grid for physics jitter.
+        # STAGNATION = unplaced-blocks-only. Placed blocks aren't perfectly static
+        # after settling — filter them out or their creep vetoes detection.
+        # 1mm grid: exact floats never trip on physics micro-jitter.
         def _in_bin(bxyz, binxyz, tol=0.05):
             return abs(bxyz[0] - binxyz[0]) < tol and abs(bxyz[1] - binxyz[1]) < tol
         unp = tuple(sorted(

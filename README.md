@@ -1,5 +1,4 @@
 # Jev Decision Layer for Autonomous Robots — Starting Phase
-
 A pick-and-place decision loop where **Jev** (TypeSafe's System One model) owns fast
 structured decisions, a **supervisor** owns safety, and scripted policies own motion.
 Built to answer one question before touching real vision or hardware:
@@ -25,6 +24,16 @@ bug when real vision or hardware arrives.
 
 Lead artifact: the **D before/after pair** — same seed, breaker off (0.50, stalls)
 vs on (0.88, recovers). A visible fix, not a table delta.
+
+## Hardware envelope (KUKA iiwa, measured — re-derive first if the arm or layout changes)
+
+- Workspace clamp (safety policy): **x ≤ 0.80**
+- True unclamped reach (IK probe): **~0.86 solid, 0.90 marginal**, 0.95 residual 0.095
+- Test injection: **red @ 0.95 — unreachable even unclamped**
+- Deliberate safety margin: **~6cm** between clamp and true envelope
+
+So "immovable" on out_of_reach is a documented physical limit, not a clamp artifact.
+Keep this block in sync with `WORKSPACE` in `sim_env.py` / `sim_real.py`.
 
 ## Architecture
 
