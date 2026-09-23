@@ -186,3 +186,21 @@ mask (added against release-ejection) also neutered push contact (restored
 per-skill). Episodes that prove immovable now abort honestly instead of stalling.
 Physics bugs fixed along the way: fire-and-forget motion, tool-down IK stall,
 world-coords grasp pivot, release catapult. `python eval.py 15 0.0 0.0 real`.
+
+### out_of_reach on real: inherent limit, honestly aborted (not a 0.29)
+
+Three sub-findings, each measured:
+- **Clamp vs kinematics**: unclamped IK reach probe — 0.80/0.84/0.86 reachable,
+  0.90 marginal (0.048), **0.95 residual 0.095, beyond envelope**. The 0.8 clamp is
+  conservative (~6cm daylight) but red@0.95 is outside the TRUE reach too: inherent
+  physical limit, not a clamp artifact. Clamp stays (safety + backend comparability).
+- **Abort split**: real oor-only (15 eps, live) — **15/15 end in immovable-abort**,
+  0 stalls. Raw skill-acc 0.33 is scored against unwinnable cases and understates a
+  system doing the right thing; solvable subset is empty here *by physics*, and the
+  eval prints both numbers separately (`immovable_abort` / `solvable_subset` lines).
+  Abort recs are logged like any decision (an earlier version `break` before logging,
+  hiding all 15 — fixed).
+- **Stagnation signature refined twice**: exact floats → 1mm grid (micro-jitter),
+  then all-blocks → unplaced-blocks-only (a placed block crept 3.5cm and vetoed
+  detection while red sat exactly static). `test_independence.py` habit extended:
+  progress signatures must ignore task-irrelevant motion.

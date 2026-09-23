@@ -66,6 +66,16 @@ def evaluate(n_per=10, noise_std=0.0, occ_prob=0.0, backend="logic"):
     occ_steps = [r for r in rows if r.get("occluded")]
     holds = [r for r in occ_steps if r.get("pred") == "wait"]
     print(f"cautious_hold: occluded_steps={len(occ_steps)} pred_wait={len(holds)} rate={len(holds)/max(1,len(occ_steps)):.2f} (wait now in oracle set when required block hidden)")
+    # immovable-abort is a SYSTEM verdict (task impossible), not a decision error:
+    # split it out so accuracy isn't scored against unwinnable episodes.
+    imm = [r for r in rows if "immovable" in r["gate"].get("reason", "")]
+    imm_eps = {r["seed"] for r in imm}
+    solv = [r for r in rows if r["seed"] not in imm_eps]
+    if imm:
+        print(f"immovable_abort: steps={len(imm)} episodes={len(imm_eps)} (physically unwinnable, excluded below)")
+        print(f" solvable_subset: n={len(solv)} acc={sum(1 for r in solv if r['correct'])/max(1,len(solv)):.2f}")
+    else:
+        print("immovable_abort: 0 (every episode solvable-or-stalled within max_steps)")
 
 if __name__ == "__main__":
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 10

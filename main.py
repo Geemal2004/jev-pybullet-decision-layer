@@ -50,9 +50,15 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
     immovable_pushes = 0  # force-pushes that moved nothing (block outside arm envelope)
     prev_was_force_push = False
     def _sig(g):
-        # quantized: real physics micro-jitters bodies ~1e-6/step, so exact float
-        # equality NEVER trips (STAGNANT=0 across a whole real battery). 1mm grid.
-        return (tuple(sorted((b, tuple(round(c, 3) for c in v["xyz"])) for b, v in g["blocks"].items())), g["holding"])
+        # progress-relevant state ONLY: unplaced blocks + holding. Placed blocks
+        # keep micro-settling on trays (blue crept 3.5cm across stagnant steps and
+        # vetoed detection while red sat exactly static). 1mm grid for physics jitter.
+        def _in_bin(bxyz, binxyz, tol=0.05):
+            return abs(bxyz[0] - binxyz[0]) < tol and abs(bxyz[1] - binxyz[1]) < tol
+        unp = tuple(sorted(
+            (b, tuple(round(c, 3) for c in v["xyz"])) for b, v in g["blocks"].items()
+            if not _in_bin(v["xyz"], g["bins"][v["target_bin"]]["xyz"])))
+        return (unp, g["holding"], g.get("grasp_unstable", False))
     STAGNANT_PUSH_AFTER = 2  # then force deterministic push of the out-of-reach block
     for step in range(max_steps):
         gt = env.get_ground_truth()
@@ -61,6 +67,8 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
             stagnant += 1
             if prev_was_force_push:
                 immovable_pushes += 1
+                # proven immovable: skip re-stagnating, go straight to admit/abort
+                stagnant = max(stagnant, STAGNANT_PUSH_AFTER)
         else:
             stagnant = 0
             immovable_pushes = 0
@@ -92,9 +100,11 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
         oset = oracle_set(gt, state.get("occluded", []))
         oracle = oracle_skill(gt, state.get("occluded", []))
         outcome = {"ok": True}
+        aborted = False
         if action == "abort":
             last_action = "abort"
-            break
+            outcome = {"ok": False, "reason": "aborted_impossible_task"}
+            aborted = True
         elif action == "pick":
             bid = _pick_target(gt)
             if bid is None:
@@ -157,6 +167,8 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
                      "noise_std": noise_std, "occ_prob": occ_prob})
         if verbose:
             print(f"[{scenario}] step {step} oracle={oracle} pred={rec['pred']} conf={rec['conf']} risk={rec['risk']} feas={rec['feas']} gate={gate_res} outcome={outcome}")
+        if aborted:
+            break
         if oracle == "wait" and not gt["holding"]:
             break
     env.close()
