@@ -59,11 +59,19 @@ def draw_panel(base, rec, answers):
 def main():
     seed = int(sys.argv[1]) if len(sys.argv) > 1 else 1000
     scenario = sys.argv[2] if len(sys.argv) > 2 else "normal"
+    noise = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0
+    occ = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0
+    breaker = (sys.argv[5] != "off") if len(sys.argv) > 5 else True
     panel = DebugPanel()
     frames = []
     # NOTE: pybullet's mp4 logging shells out to ffmpeg (absent here), so capture
     # getCameraImage frames (GUI view incl. debug text) and save a GIF via Pillow.
-    gif = os.path.join(OUT, f"live_{scenario}_seed{seed}.gif")
+    tag = f"{scenario}_seed{seed}"
+    if noise or occ:
+        tag += f"_n{noise}_o{occ}"
+    if not breaker:
+        tag += "_nobreaker"
+    gif = os.path.join(OUT, f"live_{tag}.gif")
 
     def on_step(payload):
         panel.update(payload["rec"], payload["answers"])  # 3D text (visible in window)
@@ -77,7 +85,8 @@ def main():
         time.sleep(1.5)  # throttle: tight step loop is unwatchable otherwise
 
     run_episode(seed=seed, scenario=scenario, verbose=True, backend="real",
-                gui=True, on_step=on_step)
+                gui=True, on_step=on_step, noise_std=noise, occ_prob=occ,
+                use_breaker=breaker)
     frames[0].save(gif, save_all=True, append_images=frames[1:],
                    duration=1500, loop=0)
     print(f"saved {gif} frames={len(frames)}")

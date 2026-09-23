@@ -160,6 +160,15 @@ independence before trusting the combined number.**
   5/5 correct. Run your own: `python demo_live.py [seed] [scenario]` (needs a display;
   in-world 3D text via `debug_panel.py` shows in the window, the GIF panel is drawn
   in PIL because offscreen capture drops debug text — see code comments).
+- **`demo_out/live_slip_seed1001.gif`** — slip recovery on real contact: danger 2.17
+  over the 1.5 line → regrasp passes (recovery exemption) → place → pick → place → wait.
+- **`demo_out/live_out_of_reach_seed1006_n0.015_o0.15*.gif`** — the breaker pair on REAL
+  physics (`*_nobreaker` vs normal): without it, 8 steps of waits burning to max_steps;
+  with it, `stagnant_2_force_push_red` then honest `immovable_red_after_1_pushes` abort.
+  Real-arm version of the lead artifact: stall vs admit, on contact dynamics.
+- Panel/frame agreement verified: both render paths consume the same post-execution
+  `rec` (outcome present) plus a live camera frame — spot-checked that CORRECT verdicts
+  match visible block positions per frame.
 - **`B_slip_regrasp.gif`** — the threshold mechanism up close: holding red UNSTABLE,
   danger **1.82** crossing the 1.5 line (orange bar past the marker) → gate regrasp
   @ 1.00 → CORRECT. *(Schematic render, not physics.)*
