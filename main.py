@@ -34,7 +34,7 @@ def _push_target(gt):
             return b
     return None
 
-def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=0.0, occ_prob=0.0, use_breaker=True, on_step=None, backend="logic"):
+def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=0.0, occ_prob=0.0, use_breaker=True, on_step=None, backend="logic", gui=False, video_path=None):
     import random
     if backend == "real":
         from sim_real import SimEnv as Env
@@ -42,7 +42,11 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
     else:
         from sim_env import SimEnv as Env
         import policy as pol
-    env = Env()
+    env = Env(gui=gui)
+    log_id = None
+    if video_path and gui and backend == "real":
+        import pybullet as _p
+        log_id = _p.startStateLogging(_p.STATE_LOGGING_VIDEO_MP4, video_path)
     gt = env.reset(seed, scenario=scenario)
     last_action, last_outcome, retries = None, None, 0
     stagnant = 0  # consecutive steps with zero physical progress (clean GT blocks+holding identical)
@@ -171,6 +175,9 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
             break
         if oracle == "wait" and not gt["holding"]:
             break
+    if log_id is not None:
+        import pybullet as _p
+        _p.stopStateLogging(log_id)
     env.close()
     return True
 

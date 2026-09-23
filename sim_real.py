@@ -19,6 +19,11 @@ class SimEnv:
         self.gui = gui
         self.cid = p.connect(p.GUI if gui else p.DIRECT)
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
+        if gui:
+            p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+            p.resetDebugVisualizerCamera(cameraDistance=1.6, cameraYaw=90,
+                                         cameraPitch=-25,
+                                         cameraTargetPosition=[0.55, 0, 0.1])
         p.setGravity(0, 0, -9.8)
         p.setPhysicsEngineParameter(fixedTimeStep=1.0 / STEP_HZ, numSolverIterations=50)
         self.arm = None
