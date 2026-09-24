@@ -184,6 +184,10 @@ Writer: `imageio` + bundled ffmpeg (`imageio-ffmpeg`, no system install needed);
 | `live_out_of_reach_seed1006_n0.015_o0.15_nobreaker.mp4` | C1. 8 waits, max_steps stall |
 | `live_out_of_reach_seed1006_n0.015_o0.15.mp4` | C2. Force-push → honest abort |
 | `demo_reel.mp4` | All four with captions |
+| `demo_reel_final.mp4` | **Lead artifact.** Same four rebuilt from the live MP4s with burned-in
+  caption bars + title/closing cards via `build_demo_reel.py` (needs ffmpeg on
+  PATH; `drawtext` uses a local `arial.ttf` copy because the filter chokes on
+  Windows drive-colon paths — see script comments). 41s. |
 
 Re-record: `python demo_live.py [seed] [scenario] [noise] [occ] [on|off]`,
 then `python stitch_reel.py`. Needs a display for `p.GUI`.

@@ -2,3 +2,5 @@ runs.jsonl
 __pycache__/
 *.pyc
 .env
+
+demo_out/reel_build/
