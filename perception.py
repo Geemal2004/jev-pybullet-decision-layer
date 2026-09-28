@@ -7,7 +7,7 @@ def _reachable(xyz):
             and WORKSPACE["y"][0] <= xyz[1] <= WORKSPACE["y"][1]
             and WORKSPACE["z"][0] <= xyz[2] <= WORKSPACE["z"][1])
 
-def to_jev_state(gt, last_action=None, last_outcome=None, noise_std=0.0, occ_prob=0.0, rng=None, rng_jitter=None, rng_occ=None):
+def to_jev_state(gt, last_action=None, last_outcome=None, noise_std=0.0, occ_prob=0.0, rng=None, rng_jitter=None, rng_occ=None, rng_force=None):
     """noise_std>0 jitters what JEV SEES (blocks + ee) with seeded Gaussian.
     occ_prob>0 randomly hides a block from Jev (OCCLUDED tag) with seeded RNG.
     Jitter and occlusion use SEPARATE streams so toggling one never changes the
@@ -60,4 +60,24 @@ def to_jev_state(gt, last_action=None, last_outcome=None, noise_std=0.0, occ_pro
         "last_outcome": last_outcome,
         "summary": "; ".join(lines),
     }
+    if gt.get("shift"):
+        # shift suite: stability must be inferred from sensing, never handed over.
+        # blocked bins are deliberately absent: only the operator note reveals them.
+        from grasp_physics import sensor_window
+        grip, load = sensor_window(gt, rng_force or random.Random(0))
+        del state["grasp_unstable"]
+        state["gripper_force_N"] = grip
+        state["wrist_load_N"] = load
+        for bid, b in state["blocks"].items():
+            b["material"] = gt["blocks"][bid]["material"]
+        if gt["holding"]:
+            state["held_material"] = gt["blocks"][gt["holding"]]["material"]
+        state["operator_note"] = gt.get("operator_note")
+        lines[0] = (f"ee={noisy_ee} holding={gt['holding']} all_placed={all_placed} "
+                    f"gripper_force_N={grip} wrist_load_N={load}")
+        for i, (bid, b) in enumerate(noisy_blocks.items(), start=1):
+            lines[i] += f" material={gt['blocks'][bid]['material']}"
+        if gt.get("operator_note"):
+            lines.append(f"operator_note: {gt['operator_note']}")
+        state["summary"] = "; ".join(lines)
     return state

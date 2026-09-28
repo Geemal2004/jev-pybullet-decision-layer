@@ -6,6 +6,8 @@ try:
 except Exception:
     _HAS_PB = False
 
+from grasp_physics import SHIFT_SCENARIOS, apply_shift_scenario, is_unstable
+
 WORKSPACE = {"x": (0.2, 0.8), "y": (-0.4, 0.4), "z": (0.0, 0.6)}
 SCENARIOS = ["normal", "slip", "out_of_reach", "wrong_bin"]
 
@@ -21,6 +23,11 @@ class SimEnv:
         self.scenario = "normal"
         self.dropped = False
         self.collision = False
+        self.shift = False  # distribution-shift suite: physics-derived grasp stability
+        self.t = 0          # decision step; notes and bin blocks are scheduled on it
+        self.grip_force = 0.0
+        self.note_fn = None
+        self.blocked_fn = lambda t: []
         if _HAS_PB:
             self.cid = p.connect(p.GUI if self.gui else p.DIRECT)
             p.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -52,6 +59,10 @@ class SimEnv:
             # red sitting in the wrong bin — must re-pick to correct bin
             wb = self.bins["bin_B"]["xyz"]
             self.blocks["red"]["xyz"] = [wb[0], wb[1], 0.025]
+        self.t = 0
+        self.shift = scenario in SHIFT_SCENARIOS
+        if self.shift:
+            apply_shift_scenario(self, scenario)
         if _HAS_PB:
             p.resetSimulation(physicsClientId=self.cid)
             p.setGravity(0, 0, -9.8, physicsClientId=self.cid)
@@ -62,7 +73,7 @@ class SimEnv:
         return self.get_ground_truth()
 
     def get_ground_truth(self):
-        return {
+        gt = {
             "ee_xyz": list(self.ee),
             "holding": self.holding,
             "grasp_unstable": self.grasp_unstable,
@@ -71,6 +82,23 @@ class SimEnv:
             "bins": {k: {"xyz": list(v["xyz"])} for k, v in self.bins.items()},
             "human_in_zone": False,
         }
+        if self.shift:
+            gt["shift"] = True
+            for k, v in self.blocks.items():
+                gt["blocks"][k].update(material=v["material"], mass=v["mass"])
+            gt["grip_force"] = self.grip_force
+            gt["operator_note"] = self.note_fn(self.t) if self.note_fn else None
+            gt["blocked_bins"] = self.blocked_fn(self.t)
+        return gt
+
+    def grasp(self, force):
+        """Close on the held block. Stability is physics-derived only in the shift suite."""
+        self.grip_force = force
+        self.grasp_unstable = self.shift and is_unstable(self.blocks[self.holding], force)
+
+    def release(self):
+        self.grip_force = 0.0
+        self.grasp_unstable = False
 
     def move_ee(self, xyz):
         # clamp; flag collision if target was outside workspace (checkable for risk eval)

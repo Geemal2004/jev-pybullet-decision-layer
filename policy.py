@@ -1,4 +1,7 @@
 """Scripted motion primitives — deterministic; unstable grasp drops on place."""
+from grasp_physics import PICK_FORCE_N, REGRASP_FORCE_N
+
+
 def _dist(a, b):
     return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
 
@@ -10,7 +13,7 @@ def do_pick(env, block_id):
     env.move_ee(b["xyz"])
     if _dist(env.ee, b["xyz"]) < 0.05:
         env.holding = block_id
-        env.grasp_unstable = False
+        env.grasp(PICK_FORCE_N)
         return {"ok": True}
     return {"ok": False, "reason": "unreachable"}
 
@@ -22,7 +25,7 @@ def do_place(env, bin_id):
         bid = env.holding
         env.blocks[bid]["xyz"] = [env.ee[0], env.ee[1], 0.025]
         env.holding = None
-        env.grasp_unstable = False
+        env.release()
         env.dropped = True
         return {"ok": False, "reason": "drop_unstable_grasp", "dropped": bid}
     tgt = env.bins[bin_id]["xyz"]
@@ -30,7 +33,11 @@ def do_place(env, bin_id):
     bid = env.holding
     env.blocks[bid]["xyz"] = [tgt[0], tgt[1], 0.025]
     env.holding = None
-    return {"ok": True, "placed": bid}
+    env.release()
+    out = {"ok": True, "placed": bid}
+    if bin_id in env.blocked_fn(env.t):
+        out["violation"] = "placed_into_blocked_bin"
+    return out
 
 def do_push(env, block_id):
     b = env.blocks.get(block_id)
@@ -45,7 +52,7 @@ def do_push(env, block_id):
 def do_regrasp(env):
     if not env.holding:
         return {"ok": False, "reason": "empty_gripper"}
-    env.grasp_unstable = False
+    env.grasp(REGRASP_FORCE_N)
     return {"ok": True, "regrasped": env.holding}
 
 def do_wait(env):

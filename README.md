@@ -131,6 +131,83 @@ streams — every batch is exactly reproducible.
 - `wait_rate` 0.19–0.28 under noise, all genuine; wrong picks degrade to waits.
   Safe degradation, zero drops, throughout.
 
+## Baseline comparison (`compare.py`, `baselines.py`)
+
+Same seeds, supervisor, stagnation breaker, target selection and motion — only the
+decision source changes. Episode-level: success = every block in its target bin at
+the end. Logic backend, 60 eps per decider:
+
+| Decider | Clean success | Combined noise success | Drops (clean) |
+|---|---|---|---|
+| `fixed` — blind pick/place loop | 0.75 (slip 0.00) | 0.75 | 15 |
+| `rules` — ~15 hand-written reactive rules, same perceived state | **1.00** | **1.00** | 0 |
+| `jev` — live | **1.00** | *pending (first run hit 402 credits mid-run; invalidated)* | 0 |
+
+Findings, stated plainly:
+- Against the naive loop, judgment visibly matters: blind placing drops every
+  slipped block. `fixed` "solves" out_of_reach only because the shared breaker
+  forces the push — the harness, not the decider.
+- **On this task a small rule set is a ceiling Jev cannot beat.** The state hands
+  over the answers as booleans (`grasp_unstable`, `reachable`), so an engineer can
+  encode the oracle directly. Jev's value here is that nobody wrote those rules —
+  not higher success. Showing an advantage needs inputs where rules are brittle
+  (raw force/torque, images, free-text operator notes, unseen scenarios).
+
+Clean confirms the ceiling exactly: rules 1.00 = Jev 1.00; fixed 0.75 entirely via slip drops.
+
+Run: `python compare.py 15 0.0 0.0 logic fixed,rules,jev` (needs
+`OPENROUTER_API_KEY`; exits rather than silently scoring the offline mock).
+The first combined-noise Jev run lost credits mid-run (402) and 274 decisions fell
+back to mock — visible in the table as 10 slip drops (mock places on an unstable
+grasp). `compare.py` now aborts on the first mock decision and writes nothing;
+results go to per-config files `compare_<backend>_n<noise>_o<occ>_x<n>_<deciders>.json`.
+
+## Distribution-shift suite (`grasp_physics.py`, `compare.py ... shift`)
+
+Built to test the one advantage a rule set can't copy for free: handling conditions
+its author never saw. The `grasp_unstable` flag is **removed** from the state;
+stability must be inferred. Logic backend only.
+
+- **Truth:** unstable iff `1.3·m·g > 2·μ·F_grip` (transport load vs two-finger friction).
+  Pick grips at 6 N, regrasp re-seats at 15 N, a poor/edge grasp is 0.9 N.
+- **Deciders see:** 8-sample noisy `gripper_force_N` / `wrist_load_N` windows, block
+  `material` (vision label), and a free-text `operator_note`. Blocked bins appear
+  *only* in the note. Force noise is a third seeded stream (`f-{seed}-{step}`),
+  covered by `test_independence.py`.
+- **Baselines:** `rules` thresholds grip force at 3.0 N, tuned on the standard block
+  (wood, 0.10 kg) only. `rules_eng` is an upper bound: it has the *exact* friction model
+  and a material table, but no note parsing.
+- **Jev questions:** `QUESTIONS_SHIFT` in `config.py` says what matters (grip, weight,
+  surface, notes) and never gives the formula or a threshold.
+
+| Scenario | What changes | Seen by `rules`? | Right move |
+|---|---|---|---|
+| `std_normal` | nothing | yes | pick/place |
+| `std_slip` | 0.9 N edge grasp on wood | yes | regrasp |
+| `heavy_steel` | 0.25 kg polished steel; 6 N isn't enough | no | regrasp after pick |
+| `light_rubber_poor` | 0.9 N grasp but light, grippy block — it's fine | no | place (regrasp wastes a step) |
+| `oily_note` | note says red is oily; sensors look normal | no | regrasp after pick |
+| `bin_blocked_note` | note: hands in both bins for 3 steps | no | wait before placing |
+| `chatter_note` | irrelevant note | no | ignore it (tests over-caution) |
+
+Baselines, clean, 5 eps/scenario (35 per decider):
+
+| Decider | Overall success | Drops | Unsafe placements | Unneeded regrasps |
+|---|---|---|---|---|
+| `fixed` | 0.57 | 17 | 5 | 0 |
+| `rules` (standard-tuned) | 0.71 | 32 | 5 | 5 |
+| `rules_eng` (exact physics) | 0.86 | 15 | 5 | 0 |
+| `jev` | *pending live run* | | | |
+
+`rules` fails every `heavy_steel` and `oily_note` episode by re-dropping. `rules_eng`
+fixes heavy_steel exactly, but no rule set reads the oily or blocked-bin notes — an
+author could add keyword matching *once they anticipate the note*, which is the point.
+All deciders pass `chatter_note`, so Jev can only lose there, by waiting for no reason.
+Jev could fail anywhere; the suite is only fair if Jev's misses get reported with
+the same prominence as its wins.
+
+Run: `python compare.py 5 0.0 0.0 logic jev shift` (~35 episodes, ~200 live calls).
+
 ## Bug journal (why the numbers can be trusted)
 
 1. **Move-ee clamp bug** — `max(x, *bounds)` collapsed everything to the wall.

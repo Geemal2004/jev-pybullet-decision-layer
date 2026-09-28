@@ -1,7 +1,7 @@
 """One episode: perceive -> Jev (1 call, all questions) -> supervise -> act."""
 
 from perception import to_jev_state
-from config import QUESTIONS
+from config import QUESTIONS, QUESTIONS_SHIFT
 from decision import decide
 from supervisor import gate
 import logger
@@ -34,7 +34,10 @@ def _push_target(gt):
             return b
     return None
 
-def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=0.0, occ_prob=0.0, use_breaker=True, on_step=None, backend="logic", gui=False, video_path=None):
+def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=0.0, occ_prob=0.0, use_breaker=True, on_step=None, backend="logic", gui=False, video_path=None, decider="jev"):
+    """decider: "jev" (live Jev) or a baselines.DECIDERS key. Everything else --
+    supervisor, breaker, targets, motion -- is shared, so outcome deltas are the
+    decision source's alone. Returns an episode summary dict."""
     import random
     if backend == "real":
         from sim_real import SimEnv as Env
@@ -48,6 +51,14 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
         import pybullet as _p
         log_id = _p.startStateLogging(_p.STATE_LOGGING_VIDEO_MP4, video_path)
     gt = env.reset(seed, scenario=scenario)
+    baseline = None
+    if decider != "jev":
+        from baselines import DECIDERS
+        baseline = DECIDERS[decider](len(gt["blocks"]))
+    summary = {"seed": seed, "scenario": scenario, "decider": decider, "steps": 0,
+               "drops": 0, "unreachable_attempts": 0, "waits": 0, "mock_decisions": 0,
+               "regrasps": 0, "safety_violations": 0,
+               "aborted": False, "abort_reason": None}
     last_action, last_outcome, retries = None, None, 0
     stagnant = 0  # consecutive steps with zero physical progress (clean GT blocks+holding identical)
     prev_sig = None
@@ -64,7 +75,9 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
             if not _in_bin(v["xyz"], g["bins"][v["target_bin"]]["xyz"])))
         return (unp, g["holding"], g.get("grasp_unstable", False))
     STAGNANT_PUSH_AFTER = 2  # then force deterministic push of the out-of-reach block
+    questions = QUESTIONS_SHIFT if gt.get("shift") else QUESTIONS
     for step in range(max_steps):
+        env.t = step
         gt = env.get_ground_truth()
         sig = _sig(gt)
         if prev_sig is not None and sig == prev_sig:
@@ -81,8 +94,12 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
         # separate streams: jitter draws identical whether occ is on or off (attribution-safe)
         rng_j = random.Random(f"j-{seed}-{step}-{noise_std}")
         rng_o = random.Random(f"o-{seed}-{step}-{occ_prob}")
-        state = to_jev_state(gt, last_action, last_outcome, noise_std=noise_std, occ_prob=occ_prob, rng_jitter=rng_j, rng_occ=rng_o)
-        res = decide(state, QUESTIONS)
+        rng_f = random.Random(f"f-{seed}-{step}")
+        state = to_jev_state(gt, last_action, last_outcome, noise_std=noise_std, occ_prob=occ_prob, rng_jitter=rng_j, rng_occ=rng_o, rng_force=rng_f)
+        if baseline is None:
+            res = decide(state, questions)
+        else:
+            res = {"answers": baseline.decide(state), "mock": False}
         answers = res["answers"]
         gate_res = gate(state, answers, retries)
         action = gate_res["action"]
@@ -146,7 +163,17 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
             last_action = "wait"
         last_outcome = outcome
         retries = retries + 1 if not outcome.get("ok") else 0
-        rec = {"seed": seed, "scenario": scenario, "step": step,
+        summary["steps"] += 1
+        reason = outcome.get("reason")
+        summary["drops"] += reason == "drop_unstable_grasp"
+        summary["unreachable_attempts"] += reason == "unreachable"
+        summary["waits"] += bool(outcome.get("waited"))
+        summary["mock_decisions"] += bool(res.get("mock"))
+        summary["regrasps"] += last_action == "regrasp"
+        summary["safety_violations"] += bool(outcome.get("violation"))
+        if aborted or gate_res["action"] == "abort":
+            summary["aborted"], summary["abort_reason"] = True, gate_res["reason"]
+        rec = {"seed": seed, "scenario": scenario, "step": step, "decider": decider,
                "oracle": oracle, "oracle_set": sorted(oset),
                "correct": answers.get("next_skill", {}).get("choice") in oset,
                "gate": gate_res,
@@ -156,14 +183,16 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
                "risk_conf": answers.get("risk", {}).get("confidence"),
                "feas": answers.get("feasibility", {}).get("score"),
                "feas_conf": answers.get("feasibility", {}).get("confidence"),
-                "mock": res.get("mock", False), "outcome": outcome,
+                "mock": res.get("mock", False), "mock_reason": res.get("reason"), "outcome": outcome,
                 "occluded": state.get("occluded", []),
                 "noise_std": noise_std, "occ_prob": occ_prob,
                 "true_blocks": {b: [round(c, 3) for c in v["xyz"]] for b, v in gt["blocks"].items()},
                 "seen_blocks": {b: v["xyz"] for b, v in state.get("blocks", {}).items()},
                 "seen_reachable": state.get("reachable", {}),
                 "dropped": env.dropped, "collision": env.collision,
-                "unstable": gt.get("grasp_unstable", False)}
+                "unstable": gt.get("grasp_unstable", False),
+                "grip_seen": state.get("gripper_force_N"), "load_seen": state.get("wrist_load_N"),
+                "operator_note": state.get("operator_note"), "blocked_bins": gt.get("blocked_bins")}
         logger.log(rec)
         if on_step is not None:
             on_step({"gt": gt, "state": state, "answers": answers, "rec": rec,
@@ -175,11 +204,13 @@ def run_episode(seed=0, scenario="normal", max_steps=8, verbose=True, noise_std=
             break
         if oracle == "wait" and not gt["holding"]:
             break
+    final = env.get_ground_truth()
+    summary["success"] = not final["holding"] and not _unplaced(final)
     if log_id is not None:
         import pybullet as _p
         _p.stopStateLogging(log_id)
     env.close()
-    return True
+    return summary
 
 if __name__ == "__main__":
     run_episode(scenario="normal")

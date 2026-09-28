@@ -9,10 +9,12 @@ def oracle_set(gt, occluded=None):
     blind is not required, holding for observation is valid caution."""
     holding = gt.get("holding")
     unstable = gt.get("grasp_unstable", False)
+    bin_blocked = holding and gt["blocks"][holding]["target_bin"] in gt.get("blocked_bins", [])
     if holding and unstable:
-        return {"regrasp"}  # placing now drops; push impossible while holding
+        # placing now drops; push impossible while holding. Holding still is safe.
+        return {"regrasp", "wait"} if bin_blocked else {"regrasp"}
     if holding:
-        return {"place"}
+        return {"wait"} if bin_blocked else {"place"}
     # not holding: physical facts only (no scenario tag — eval metadata must not leak into ground truth)
     unplaced = [bid for bid, b in gt["blocks"].items() if not _in_bin(b["xyz"], gt["bins"][b["target_bin"]]["xyz"])]
     if not unplaced:
