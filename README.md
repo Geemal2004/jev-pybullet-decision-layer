@@ -4,13 +4,18 @@ structured decisions, a **supervisor** owns safety, and scripted policies own mo
 Built to answer one question before touching real vision or hardware:
 *is the decision layer calibrated, attributable, and safe under stress?*
 
-> **Read this first — what the visuals are.**
-> The clips in `demo_out/` are **schematic top-down renders of ground-truth state,
-> not physics footage**. PyBullet has no prebuilt wheel for this toolchain
-> (win32 / Python 3.12) so it could not be installed here; the simulator runs
-> headless on deterministic logic and **every overlay number is a real live Jev
-> answer**. Nothing in this repo implies contact simulation that never ran.
-> (Repeat wherever these GIFs travel: README, slides, shares.)
+> **Read this first — what the visuals are. Everything here is simulation; no
+> physical robot was used.**
+> - **Schematic GIFs** (`A_clean.gif`, `B_slip_regrasp.gif`, `C_cautious_wait.gif`,
+>   `D_breaker_*.gif`): top-down renders of ground-truth state from the headless
+>   **logic backend** — not physics.
+> - **Live clips** (`live_*.gif/mp4`, `demo_reel*.mp4`): PyBullet rigid-body
+>   simulation of a KUKA iiwa (`backend="real"` = real-physics *simulation*).
+>   Time-lapse, one frame per decision step.
+>
+> In both, **every overlay number is a live Jev answer**; any offline mock fallback
+> is flagged red on the panel. Jev picks skills and scores; motion is scripted
+> (`policy.py`) and the supervisor can veto. (Repeat wherever these travel.)
 
 ## The headline result
 
@@ -155,22 +160,22 @@ independence before trusting the combined number.**
   (1006, combined noise): without the breaker the arm stalls at 0.50; with it,
   `stagnant_2_force_push_red` fires and the task completes at 0.88. The session's
   fix, visible. *(Schematic render of ground-truth state, not physics simulation.)*
-- **`demo_out/live_normal_seed1000.gif`** — the same loop on the REAL arm (KUKA iiwa,
-  GUI capture): live skill/confidence/danger/feasibility panel composited per step,
+- **`demo_out/live_normal_seed1000.gif`** — the same loop on the real-physics backend
+  (simulated KUKA iiwa, PyBullet GUI capture): live skill/confidence/danger/feasibility panel composited per step,
   5/5 correct. Run your own: `python demo_live.py [seed] [scenario]` (needs a display;
   in-world 3D text via `debug_panel.py` shows in the window, the GIF panel is drawn
   in PIL because offscreen capture drops debug text — see code comments).
-- **`demo_out/live_slip_seed1001.gif`** — slip recovery on real contact: danger 2.17
+- **`demo_out/live_slip_seed1001.gif`** — slip recovery on simulated contact: danger 2.17
   over the 1.5 line → regrasp passes (recovery exemption) → place → pick → place → wait.
-- **`demo_out/live_out_of_reach_seed1006_n0.015_o0.15*.gif`** — the breaker pair on REAL
-  physics (`*_nobreaker` vs normal): without it, 8 steps of waits burning to max_steps;
+- **`demo_out/live_out_of_reach_seed1006_n0.015_o0.15*.gif`** — the breaker pair on the
+  real-physics backend (`*_nobreaker` vs normal): without it, 8 steps of waits burning to max_steps;
   with it, `stagnant_2_force_push_red` then honest `immovable_red_after_1_pushes` abort.
-  Real-arm version of the lead artifact: stall vs admit, on contact dynamics.
+  Physics-sim version of the lead artifact: stall vs admit, on simulated contact.
 - Panel/frame agreement verified: both render paths consume the same post-execution
   `rec` (outcome present) plus a live camera frame — spot-checked that CORRECT verdicts
   match visible block positions per frame.
 
-## Live video set (real arm, MP4 — not schematics)
+## Live video set (PyBullet real-physics sim, MP4 — not schematics, not hardware)
 
 `demo_out/demo_reel.mp4` (44s) stitches all four with caption cards — lead with it.
 Camera: dist 0.9, yaw 90, pitch −40 at table height (arm + trays fill the frame).
@@ -185,9 +190,11 @@ Writer: `imageio` + bundled ffmpeg (`imageio-ffmpeg`, no system install needed);
 | `live_out_of_reach_seed1006_n0.015_o0.15.mp4` | C2. Force-push → honest abort |
 | `demo_reel.mp4` | All four with captions |
 | `demo_reel_final.mp4` | **Lead artifact.** Same four rebuilt from the live MP4s with burned-in
-  caption bars + title/closing cards via `build_demo_reel.py` (needs ffmpeg on
-  PATH; `drawtext` uses a local `arial.ttf` copy because the filter chokes on
-  Windows drive-colon paths — see script comments). 41s. |
+  caption bars and per-clip seed/settings labels, plus scope ("what Jev controls"),
+  aggregate-results, closing and provenance (commit, model, endpoint, dates) cards via
+  `build_demo_reel.py` (needs ffmpeg on PATH; `drawtext` uses a local `arial.ttf` copy
+  because the filter chokes on Windows drive-colon paths — see script comments).
+  Every on-screen claim is backed by a number in this README — edit both together. |
 
 Re-record: `python demo_live.py [seed] [scenario] [noise] [occ] [on|off]`,
 then `python stitch_reel.py`. Needs a display for `p.GUI`.

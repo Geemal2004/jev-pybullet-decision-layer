@@ -22,8 +22,8 @@ def clip(name):
 
 
 reel = []
-reel += card("Jev Decision Layer — live on a KUKA iiwa",
-             "real PyBullet contact dynamics + live Jev decisions (not schematics)", hold=8)
+reel += card("Jev Decision Layer — live on a simulated KUKA iiwa",
+             "PyBullet rigid-body simulation + live Jev decisions (not schematics, not hardware)", hold=8)
 reel += card("A. Clean baseline — seed 1000", "pick > place x2 > wait. 5/5, all live.")
 reel += clip("live_normal_seed1000.mp4")
 reel += card("B. Slip recovery — danger 2.1 crosses the 1.5 line",
